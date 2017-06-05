@@ -1,0 +1,169 @@
+---
+title: "Final Project Report - Practical Machine Learning Course"
+output: html_document
+---
+
+##Background & Introduction
+
+This document was prepared as part of the final assignment in the Practical Machine Learning course. In the next paragraph is a summary of the problem to be solved.
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+##Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+##Project Objective
+The goal of this project is to predict the manner in which the participants did the exercise, by predicting the depepndent variable "classe" using the datasets provided.
+
+##Project code and steps
+
+The project code used and the steps followed are contained in this section and should enable reproducability of the project whenever required.
+
+
+Install (if not already installed) and load the packages below:
+
+```{r}
+library(caret);library(rpart);library(rpart.plot);library(RColorBrewer);library(rattle);library(randomForest)
+
+```
+
+Set a pseudo random number with the code:
+
+```{r}
+set.seed(2499)
+```
+
+Create the data objects for both the training and test data provided in the Data section of this document.
+To download the data, create data objects for the training and test data sources as indicated below:
+```{r}
+train_source<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_source<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+```
+Next, create the data objects using the code below:
+
+```{r}
+training<-read.csv(url(train_source), na.strings=c("NA","#DIV/0!",""))
+testing<-read.csv(url(test_source),na.strings = c("NA","#DIV/0!","")) 
+```
+Confirm datasets.
+```{r}
+names(training)
+dim(training)
+names(testing)
+dim(testing)
+```
+##Data Partitioning
+Split the training dataset into Train and Test at a ratio of 60% to 40% using the data partition function in the caret package.
+```{r}
+inTrain <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+Train_data<-training[inTrain,]
+Test_data<-training[-inTrain,]
+```
+Check the sizes of the partitioned datasets.
+```{r}
+dim(Train_data)
+dim(Test_data)
+```
+##Data Cleanup
+Remove any unnecessary fields from the datasets.
+```{r}
+Train_data<-Train_data[,-(1:5)]
+names(Train_data)
+Test_data<-Test_data[,-(1:5)]
+names(Test_data)
+```
+Perform function to remove columns where NA values exist
+```{r}
+Data_Na<-sapply(Train_data,function(x)mean(is.na(x)))>0.95
+Train_data<-Train_data[,Data_Na==FALSE]
+dim(Train_data)
+Test_data<-Test_data[,Data_Na==FALSE]
+dim(Test_data)
+```
+
+Remove Near zero variance variables.
+```{r}
+NZV<-nearZeroVar(Train_data)
+Train_data<-Train_data[,-NZV]
+dim(Train_data)
+Test_data<-Test_data[,-NZV]
+dim(Test_data)
+```
+#Model building and selection
+We shall perform prediction model building using 3 algorithms:
+  *Random Forest
+  *Generalized Boosted Model
+  *Decision Trees
+#Model: Random Forest
+```{r}
+set.seed(2499)
+RF_ctrl<-trainControl(method = "cv",number = 3,verboseIter = FALSE) #set validation
+RF_ModelFit<-train(classe~.,data = Train_data,method="rf",trControl=RF_ctrl)
+RF_ModelFit$finalModel
+```
+Prediction.
+```{r}
+RF_ModelPred<-predict(RF_ModelFit,newdata=Test_data)
+conf_matrix_RF<-confusionMatrix(RF_ModelPred,Test_data$classe)
+conf_matrix_RF
+```
+
+
+
+#Model: Generalized Boosted Model
+```{r}
+set.seed(2499)
+#GBM_ctrl<-trainControl(method = "repeatedcv",number = 5,repeats = 1,verboseIter = TRUE)
+#GMB_ModelFit<-train(classe~.,data = Train_data,method="gbm",trControl=GBM_ctrl)
+#GBM_ModelFit$finalModel
+
+GBM_ctrl <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+GMB_ModelFit  <- train(classe ~ ., data=Train_data, method = "gbm",
+                    trControl = GBM_ctrl, verbose = FALSE)
+GMB_ModelFit$finalModel
+
+```
+Prediction.
+```{r}
+#GBM_ModelPred<-predict(GBM_ModelFit,newdata=Test_data,type="class")
+#conf_matrixGBM<-confusionMatrix(GBM_ModelPred,Test_data$classe)
+#conf_matrixGBM
+
+GBM_ModelPred <- predict(GMB_ModelFit, newdata=Test_data)
+conf_matrixGBM <- confusionMatrix(GBM_ModelPred, Test_data$classe)
+conf_matrixGBM
+
+```
+
+#Model: Decision Trees
+
+```{r}
+set.seed(2499)
+DT_ModelFit<-rpart(classe~.,data = Train_data,method = "class")
+fancyRpartPlot(DT_ModelFit)
+```
+Prediction
+```{r}
+DT_ModelPred<-predict(DT_ModelFit,newdata=Test_data,type="class")
+Conf_matrix_DT<-confusionMatrix(DT_ModelPred,Test_data$classe)
+Conf_matrix_DT
+```
+#Model selection & Application to Testing data
+Based on the outcome of the 3 models, Random Forest gives us the best accuracy level of 0.9964.
+
+When applied to the testing data, the prediction would be as indicated below:
+```{r}
+TEST_Pred<- predict(RF_ModelFit,newdata=testing)
+TEST_Pred
+```
+
+
+
